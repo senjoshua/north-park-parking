@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#e1e2e7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1b26" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="NP Sweeping">
+  <title>North Park Street Sweeping</title>
+  <meta name="description" content="When each side of the street gets swept in North Park, San Diego — pick a day, see which sides to avoid.">
+  <meta property="og:title" content="North Park Street Sweeping">
+  <meta property="og:description" content="When each side of the street gets swept in North Park, San Diego — pick a day, see which sides to avoid.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M8 22H92A5 5 0 0 0 97 27V66Q97 76 88 76H12Q3 76 3 66V27A5 5 0 0 0 8 22Z' fill='%231c4a44'/><text x='50' y='62' font-size='36' font-family='Arial Black,Arial' font-weight='900' fill='%23f4e4ba' text-anchor='middle'>NP</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Overpass:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <noscript><p class="noscript">This map needs JavaScript to show the sweeping schedule.</p></noscript>
+  <div class="app">
+    <header class="brand">
+      <svg class="logo" viewBox="4 2 232 66" role="img" aria-label="North Park sign">
+        <!-- stylized North Park landmark sign (University Ave &amp; 30th St) -->
+        <!-- panel: dark underside for depth, then the face with notched top corners and scalloped bottom -->
+        <path d="M14 6H226A6 6 0 0 0 232 12V44Q232 54 222 54Q214 54 210 50Q200 56 172 56Q146 56 134 64H106Q94 56 68 56Q40 56 30 50Q26 54 18 54Q8 54 8 44V12A6 6 0 0 0 14 6Z"
+              fill="#0f302b" transform="translate(0 4)"/>
+        <path d="M14 6H226A6 6 0 0 0 232 12V44Q232 54 222 54Q214 54 210 50Q200 56 172 56Q146 56 134 64H106Q94 56 68 56Q40 56 30 50Q26 54 18 54Q8 54 8 44V12A6 6 0 0 0 14 6Z"
+              fill="#1c4a44"/>
+        <path d="M17 10.5H223A4 4 0 0 0 227 14.5V43Q227 49 221 49H19Q13 49 13 43V14.5A4 4 0 0 0 17 10.5Z"
+              fill="none" stroke="#d6b268" stroke-width="1.4"/>
+        <g font-family="Overpass, 'Arial Black', sans-serif" font-weight="800" font-size="32" text-anchor="middle">
+          <text x="121.5" y="43.5" fill="#0c2522" textLength="194" lengthAdjust="spacingAndGlyphs">NORTH PARK</text>
+          <text x="120" y="42" fill="#f4e4ba" stroke="#b8862e" stroke-width=".9" paint-order="stroke"
+                textLength="194" lengthAdjust="spacingAndGlyphs">NORTH PARK</text>
+        </g>
+      </svg>
+      <div class="brand-text">
+        <h1>North Park Street Sweeping</h1>
+        <p class="sub">Block-by-block schedule for both sides of the street</p>
+      </div>
+    </header>
+
+    <main class="map-wrap">
+      <div id="map" aria-label="Map of street sides"></div>
+      <div class="legend">
+        <span><i class="sw swept"></i>Swept that day</span>
+        <span><i class="sw ok"></i>No sweeping</span>
+      </div>
+    </main>
+
+    <aside class="panel" id="panel">
+      <section class="days" aria-label="Pick a day">
+        <div class="days-head">
+          <h2 id="day-title">Today</h2>
+          <span class="muted" id="day-summary" aria-live="polite"></span>
+        </div>
+        <div class="day-strip" id="day-strip" role="listbox"></div>
+      </section>
+
+      <div id="list-view">
+        <section>
+          <h3 class="section-label">Streets</h3>
+          <div id="street-list"></div>
+        </section>
+      </div>
+
+      <div id="detail-view" hidden>
+        <button class="back" id="back" type="button">← All streets</button>
+        <div class="detail-head">
+          <h2 id="d-street"></h2>
+          <p class="muted" id="d-block"></p>
+        </div>
+        <div class="sign-wrap" id="sign"></div>
+        <div class="status-line" id="d-status"></div>
+        <h3 class="section-label">Upcoming</h3>
+        <ol class="upcoming" id="d-upcoming"></ol>
+        <div class="actions">
+          <button class="btn" id="d-other" type="button"></button>
+        </div>
+        <p class="fine" id="d-raw"></p>
+      </div>
+
+      <footer class="foot">
+        Schedules from the City of San Diego’s
+        <a href="https://webmaps.sandiego.gov/portal/apps/experiencebuilder/experience/?id=d2f56932d1764a009321162ad6ea2b7e" target="_blank" rel="noopener">street sweeping map</a>,
+        retrieved <span id="fetched"></span>. Not an official city site — always check the posted sign.
+      </footer>
+    </aside>
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
+  <script src="data/segments.js"></script>
+  <script src="sign.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
