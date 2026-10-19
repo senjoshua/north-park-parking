@@ -25,6 +25,10 @@
   const systemDark = matchMedia("(prefers-color-scheme: dark)");
   const isDark = () => (root.dataset.theme ? root.dataset.theme === "dark" : systemDark.matches);
 
+  const LOCATE_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22"/></svg>`;
+  const PIN_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg>`;
+  const SWAP_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3.5 7.5 7 11M3.5 7.5h13M17 13l3.5 3.5L17 20M20.5 16.5h-13"/></svg>`;
+  const CHECK_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
   const CAR_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.2 11.2 6.7 7.4A2.2 2.2 0 0 1 8.7 6h6.6a2.2 2.2 0 0 1 2 1.4l1.5 3.8"/><path d="M4.5 11.2h15a1.8 1.8 0 0 1 1.8 1.8v3.2a.9.9 0 0 1-.9.9H3.6a.9.9 0 0 1-.9-.9V13a1.8 1.8 0 0 1 1.8-1.8z"/><path d="M6.5 17.1v1.4M17.5 17.1v1.4"/><circle cx="7" cy="14.2" r=".6"/><circle cx="17" cy="14.2" r=".6"/></svg>`;
 
   // ---------- dates (all in San Diego time, as integer day numbers) ----------
@@ -84,6 +88,8 @@
   let selectedId = null;
   // the block side the user parked on, saved in this browser only
   let parkedId = segById.has(store.get("parkedSide")) ? store.get("parkedSide") : null;
+  // where along that side the car is, when parked with "Use my location" ([lat, lng]); else the block middle
+  let parkedAt = parkedId ? JSON.parse(store.get("parkedAt") || "null") : null;
 
   // group block-sides into blocks, and blocks into streets
   const blocks = [];
@@ -191,7 +197,7 @@
   for (const s of DATA.segments) {
     const line = L.polyline(s.line, { weight: 5, lineCap: "round", opacity: 0.9 });
     if (!touch) line.bindTooltip("", { sticky: true, className: "side-tip", direction: "top", offset: [0, -8] });
-    line.on("click", (e) => { L.DomEvent.stop(e); select(s.id); })
+    line.on("click", (e) => { L.DomEvent.stop(e); select(s.id, [e.latlng.lat, e.latlng.lng]); })
       .on("mouseover", () => hover(s.id, true))
       .on("mouseout", () => hover(s.id, false))
       .addTo(map);
@@ -266,7 +272,8 @@
     if (!selectedId) return;
     const s = segById.get(selectedId);
     const w = isPhone() ? 70 : 92;
-    signMarker = L.marker(lines.get(selectedId).getCenter(), {
+    const at = selectedId === parkedId && parkedAt ? parkedAt : lines.get(selectedId).getCenter();
+    signMarker = L.marker(at, {
       icon: L.divIcon({ className: "map-sign", html: SweepSign.signSVG(s), iconSize: [w, w * 1.08], iconAnchor: [w / 2, w * 1.08 + 10] }),
       interactive: false,
       keyboard: false,
@@ -278,23 +285,33 @@
     if (carMarker) carMarker.remove();
     carMarker = null;
     if (!parkedId) return;
-    carMarker = L.marker(lines.get(parkedId).getCenter(), {
-      icon: L.divIcon({ className: "", html: `<div class="car-pin" title="Your car">${CAR_SVG}</div>`, iconSize: [34, 34] }),
+    const seg = segById.get(parkedId);
+    carMarker = L.marker(parkedAt || lines.get(parkedId).getCenter(), {
+      // the pin sits in a larger invisible hit area so it's easy to grab with a finger
+      icon: L.divIcon({ className: "car-hit", html: `<div class="car-pin" title="Your car — drag to your exact spot">${CAR_SVG}</div>`, iconSize: touch ? [48, 48] : [38, 38] }),
       keyboard: false,
       zIndexOffset: 1000,
       bubblingMouseEvents: false,
-    }).on("click", () => select(parkedId)).addTo(map);
+      draggable: true,
+      autoPan: true,
+    })
+      .on("click", () => select(parkedId))
+      // slide along the block: the pin stays snapped to the side it's parked on
+      .on("drag", (e) => e.target.setLatLng(nearestOnSide(seg, e.latlng.lat, e.latlng.lng).at))
+      .on("dragend", (e) => { const p = e.target.getLatLng(); setParked(parkedId, [p.lat, p.lng]); })
+      .addTo(map);
   }
 
   function styleLines() {
+    const focus = selectedId ? [selectedId] : candidateIds();
     for (const [id, line] of lines) {
       const s = segById.get(id);
       const swept = sweptOn(s, selectedDay);
-      const sel = id === selectedId;
+      const sel = focus.includes(id);
       line.setStyle({
         color: swept ? css("--swept") : css("--ok"),
         weight: sel ? 9 : 5,
-        opacity: selectedId && !sel ? 0.45 : 0.9,
+        opacity: focus.length && !sel ? 0.4 : 0.9,
       });
       if (!touch) line.setTooltipContent(
         `<strong>${s.street}</strong> · ${SIDE_NAME[s.side]}<br>${ruleText(s)}, ${fmtWindow(s)}`
@@ -361,6 +378,8 @@
     $("day-summary").textContent = summary;
   }
 
+  const oppositeOf = (s) => DATA.segments.find((x) => x.street === s.street && x.block === s.block && x.side === OPPOSITE[s.side]);
+
   function renderCar() {
     const el = $("my-car");
     el.hidden = !parkedId;
@@ -373,18 +392,61 @@
     let when = next != null ? `Next sweeping ${fmtDate(next)}, ${fmtWindow(s)}` : "";
     if (inWindow) when = `Sweeping now until ${SweepSign.fmtTime(s.end)} — move your car`;
     else if (soon) when = `Sweeping ${relDay(next).toLowerCase()}, ${fmtWindow(s)} — move your car`;
+    const other = oppositeOf(s);
     el.className = `car-card${inWindow || soon ? " alert" : ""}`;
     el.innerHTML = `<div class="car-icon">${CAR_SVG}</div>
       <div>
         <div class="car-title">Your car</div>
         <div class="car-where">${s.street} · ${SIDE_NAME[s.side]}</div>
         <div class="car-meta">${s.block} block · ${blockLabel(s)}</div>
+        <div class="car-hint">${touch ? "Press and drag" : "Drag"} the car on the map to your exact spot</div>
         <div class="car-when">${when}</div>
       </div>
       <div class="car-actions">
-        <button class="btn" type="button" data-act="view">View spot</button>
-        <button class="btn ghost" type="button" data-act="clear">Moved my car</button>
+        <button class="btn" type="button" data-act="view">${PIN_SVG}View spot</button>
+        ${other ? `<button class="btn ghost" type="button" data-act="flip" title="Switch to the ${SIDE_NAME[other.side].toLowerCase()}">${SWAP_SVG}Other side</button>` : ""}
+        <button class="btn ghost" type="button" data-act="clear">${CHECK_SVG}Moved my car</button>
       </div>`;
+  }
+
+  function renderLocate() {
+    const el = $("locate");
+    el.hidden = !!parkedId && !locate; // offered whenever no car is saved
+    if (el.hidden) return;
+    let html;
+    if (!locate) {
+      html = `<div class="locate-row">
+          <div><div class="car-title">Where's your car?</div>
+          <div class="car-meta">Find your block, then confirm which side you're on.</div></div>
+          <button class="btn" type="button" data-loc="start">${LOCATE_SVG}Use my location</button>
+        </div>`;
+    } else if (locate.status === "pending") {
+      html = `<div class="locate-row"><div class="car-meta">Finding your location…</div>
+        <button class="btn ghost" type="button" data-loc="cancel">Cancel</button></div>`;
+    } else if (locate.status === "error") {
+      html = `<p class="car-meta">${locate.message}</p>
+        <div class="car-actions"><button class="btn" type="button" data-loc="start">Try again</button>
+        <button class="btn ghost" type="button" data-loc="cancel">Dismiss</button></div>`;
+    } else {
+      const c = locate.candidates[locate.idx];
+      const best = c.sides[0].s.id;
+      const sides = [...c.sides].sort((p, q) => sideOrder.indexOf(p.s.side) - sideOrder.indexOf(q.s.side));
+      const nextC = locate.candidates[(locate.idx + 1) % locate.candidates.length];
+      html = `<div class="car-title">Which side are you parked on?</div>
+        <div class="car-where">${c.b.street} · ${c.b.block} block</div>
+        <div class="car-meta">${blockLabel(c.b)} · location accurate to about ${Math.round(locate.fix.accuracy)} m</div>
+        <div class="choices">${sides.map(({ s }) => `<button class="choice${s.id === best ? " best" : ""}" type="button" data-park="${s.id}">
+            ${s.id === best ? '<span class="badge">Closest</span>' : ""}
+            <span class="label">${SIDE_NAME[s.side]}</span>
+            <span class="rule">${ruleText(s)} · ${fmtWindow(s)}</span>
+          </button>`).join("")}</div>
+        <div class="locate-links">
+          ${locate.candidates.length > 1 ? `<button class="link" type="button" data-loc="next">Not this block? Try ${nextC.b.street}, ${blockLabel(nextC.b)}</button>` : ""}
+          <button class="link" type="button" data-loc="cancel">Cancel</button>
+        </div>`;
+    }
+    el.className = "locate-card";
+    el.innerHTML = html;
   }
 
   function renderList() {
@@ -423,7 +485,7 @@
     $("d-upcoming").innerHTML = next
       .map((dn) => `<li><span>${fmtDate(dn, true)}</span><span class="rel">${relDay(dn)} · ${fmtWindow(s)}</span></li>`)
       .join("");
-    const other = DATA.segments.find((x) => x.street === s.street && x.block === s.block && x.side === OPPOSITE[s.side]);
+    const other = oppositeOf(s);
     $("d-other").hidden = !other;
     if (other) {
       $("d-other").textContent = `${SIDE_NAME[other.side]} →`;
@@ -437,6 +499,7 @@
 
   function render() {
     renderDays();
+    renderLocate();
     renderCar();
     renderList();
     styleLines();
@@ -447,15 +510,24 @@
     placeCarMarker();
   }
 
-  function select(id) {
+  // `tappedAt` is the map point when a side was picked by tapping its line ("Park here" uses it)
+  let tappedAt = null;
+  function select(id, at = null) {
     selectedId = id && segById.has(id) ? id : null;
+    tappedAt = selectedId ? at : null;
     const hash = selectedId ? `#${selectedId}` : " ";
     if (location.hash !== hash.trim()) history.replaceState(null, "", hash);
     render();
     if (selectedId) {
       revealPanel();
       // keep the side (and the sign drawn above it) in the visible part of the map
-      map.panInside(lines.get(selectedId).getCenter(), mapPadding(isPhone() ? 90 : 110));
+      const at = selectedId === parkedId && parkedAt ? parkedAt : lines.get(selectedId).getCenter();
+      if (isPhone()) {
+        // zoom in so the block fills the visible map: big enough to tap and to drag the car precisely
+        map.fitBounds(lines.get(selectedId).getBounds().extend(at), { ...mapPadding(90), maxZoom: 18 });
+      } else {
+        map.panInside(at, mapPadding(110));
+      }
     }
   }
 
@@ -465,10 +537,106 @@
     if (isPhone()) setSheet(snaps()[1]);
   }
 
-  function setParked(id) {
+  // Save the parked side. `near` ([lat, lng]) pins the car at that point along the side
+  // (snapped onto its line); without it the car is shown at the middle of the block.
+  function setParked(id, near = null) {
     parkedId = id;
+    parkedAt = id && near ? nearestOnSide(segById.get(id), near[0], near[1]).at : null;
     store.set("parkedSide", id);
+    store.set("parkedAt", parkedAt && JSON.stringify(parkedAt));
     render();
+  }
+
+  // ---------- use my location ----------
+  // Phone GPS is often off by 5–20 m and the two sides of a street are only ~11 m apart, so the
+  // location only narrows things down to a block. The user confirms the side before it's saved.
+  let locate = null; // { status: "pending" | "choose" | "error", fix, candidates, idx, message }
+  let youLayer = null;
+  function candidateIds() {
+    return locate?.status === "choose" ? locate.candidates[locate.idx].sides.map((x) => x.s.id) : [];
+  }
+
+  // closest point on a side's line to [lat, lng]: { d: distance in meters, at: [lat, lng] }
+  function nearestOnSide(seg, lat, lng) {
+    const kx = 111320 * Math.cos((lat * Math.PI) / 180);
+    const ky = 110540;
+    let best = { d: Infinity, at: null };
+    for (let i = 1; i < seg.line.length; i++) {
+      const [y0, x0] = seg.line[i - 1];
+      const [y1, x1] = seg.line[i];
+      const ax = (x0 - lng) * kx, ay = (y0 - lat) * ky;
+      const dx = (x1 - x0) * kx, dy = (y1 - y0) * ky;
+      const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy || 1)));
+      const d = Math.hypot(ax + t * dx, ay + t * dy);
+      if (d < best.d) best = { d, at: [y0 + t * (y1 - y0), x0 + t * (x1 - x0)] };
+    }
+    return best;
+  }
+  const distanceToSide = (seg, lat, lng) => nearestOnSide(seg, lat, lng).d;
+
+  // up to three nearest blocks within 150 m, each with its sides ordered nearest first
+  function rankBlocks(lat, lng) {
+    return blocks
+      .map((b) => {
+        const sides = b.sides.map((s) => ({ s, d: distanceToSide(s, lat, lng) })).sort((p, q) => p.d - q.d);
+        return { b, sides, d: sides[0].d };
+      })
+      .sort((p, q) => p.d - q.d)
+      .filter((r, i) => i < 3 && r.d < 150);
+  }
+
+  function showYou(lat, lng, accuracy) {
+    if (youLayer) youLayer.remove();
+    youLayer = L.layerGroup([
+      L.circle([lat, lng], { radius: accuracy, color: css("--accent"), weight: 1, fillOpacity: 0.12, interactive: false }),
+      L.circleMarker([lat, lng], { radius: 7, color: "#fff", weight: 2, fillColor: css("--accent"), fillOpacity: 1, interactive: false }),
+    ]).addTo(map);
+  }
+
+  function focusCandidate() {
+    revealPanel();
+    const c = locate.candidates[locate.idx];
+    const bounds = L.featureGroup(c.sides.map((x) => lines.get(x.s.id))).getBounds().extend([locate.fix.lat, locate.fix.lng]);
+    map.fitBounds(bounds, { ...mapPadding(isPhone() ? 28 : 0), maxZoom: 18 });
+  }
+
+  function locateFail(message) {
+    locate = { status: "error", message };
+    render();
+  }
+  function endLocate() {
+    locate = null;
+    if (youLayer) youLayer.remove();
+    youLayer = null;
+    render();
+  }
+
+  function startLocate() {
+    if (!navigator.geolocation || !isSecureContext) {
+      return locateFail("Location isn't available on this page. Open the site from its https link, or pick a side below.");
+    }
+    select(null);
+    locate = { status: "pending" };
+    render();
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (!locate) return; // cancelled while waiting
+        const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+        showYou(lat, lng, accuracy);
+        const candidates = rankBlocks(lat, lng);
+        if (!candidates.length) return locateFail("You don't seem to be on one of the mapped blocks. Pick a side below instead.");
+        locate = { status: "choose", fix: { lat, lng, accuracy }, candidates, idx: 0 };
+        render();
+        focusCandidate();
+      },
+      (err) => {
+        if (!locate) return;
+        locateFail(err.code === 1
+          ? "Location permission was denied. Allow it for this site in your browser settings, or pick a side below."
+          : "Couldn't get your location. Try again, or pick a side below.");
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   }
 
   // ---------- light / dark ----------
@@ -506,11 +674,27 @@
     if (btn) hover(btn.dataset.id, false);
   });
   $("back").addEventListener("click", () => { select(null); revealPanel(); });
-  $("d-park").addEventListener("click", () => setParked(parkedId === selectedId ? null : selectedId));
+  $("d-park").addEventListener("click", () => setParked(parkedId === selectedId ? null : selectedId, tappedAt));
   $("my-car").addEventListener("click", (e) => {
     const act = e.target.closest("[data-act]")?.dataset.act;
     if (act === "view") select(parkedId);
     if (act === "clear") setParked(null);
+    // same spot along the block, across the street
+    if (act === "flip") setParked(oppositeOf(segById.get(parkedId)).id, parkedAt);
+  });
+  $("locate").addEventListener("click", (e) => {
+    const park = e.target.closest("[data-park]")?.dataset.park;
+    const act = e.target.closest("[data-loc]")?.dataset.loc;
+    if (park) {
+      setParked(park, [locate.fix.lat, locate.fix.lng]);
+      endLocate();
+    } else if (act === "start") startLocate();
+    else if (act === "cancel") endLocate();
+    else if (act === "next") {
+      locate.idx = (locate.idx + 1) % locate.candidates.length;
+      render();
+      focusCandidate();
+    }
   });
   $("theme-toggle").addEventListener("click", () => {
     root.dataset.theme = isDark() ? "light" : "dark";

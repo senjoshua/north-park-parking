@@ -115,7 +115,7 @@ a { color: inherit; }
   display: flex; flex-direction: column; gap: 12px;
   padding: 20px 20px 16px; background: var(--panel); border-right: 1px solid var(--line);
 }
-.logo { width: 190px; height: auto; display: block; }
+.logo { width: 190px; height: auto; aspect-ratio: 232 / 66; display: block; flex-shrink: 0; }
 .theme-toggle {
   position: absolute; top: 16px; right: 16px;
   width: 38px; height: 38px; display: grid; place-items: center; flex: none;
@@ -217,7 +217,11 @@ h1 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; }
   border: 0; background: var(--glow); color: var(--selected-fg);
   border-radius: 10px; padding: 10px 16px; font-weight: 600; min-height: 44px;
 }
-.btn.ghost { background: transparent; color: var(--text); border-color: var(--line); }
+.btn.ghost { background: var(--chip); color: var(--text); border: 1px solid var(--line); }
+.btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
+.btn { transition: filter .15s, transform .05s, border-color .15s, color .15s; }
+.btn:not(.ghost):hover { filter: brightness(1.08); }
+.btn:active { transform: scale(.97); }
 .fine { font-size: 12px; color: var(--muted); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -230,6 +234,35 @@ h1 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; }
   background: color-mix(in srgb, var(--accent) 9%, var(--panel));
 }
 .car-card.alert { border-color: color-mix(in srgb, var(--swept) 55%, var(--line)); background: var(--swept-soft); }
+
+/* use my location: find the block, then confirm the side */
+.locate-card {
+  padding: 12px; margin-bottom: 18px; border-radius: var(--radius);
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+}
+.locate-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.locate-row .btn { flex: none; min-height: 40px; padding: 8px 14px; }
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 4px; }
+.choice {
+  position: relative; text-align: left; min-height: 64px; padding: 10px 11px;
+  display: flex; flex-direction: column; gap: 2px;
+  border: 2px solid var(--line); border-radius: 10px; background: var(--panel);
+  transition: border-color .15s, transform .05s;
+}
+.choice:hover { border-color: var(--muted); }
+.choice:active { transform: scale(.98); }
+.choice.best { border-color: var(--accent); }
+.choice .label { font-weight: 700; font-size: 14px; }
+.choice .rule { font-size: 12px; color: var(--muted); }
+.badge {
+  align-self: flex-start; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+  padding: 1px 6px; border-radius: 999px; margin-bottom: 2px;
+}
+.locate-links { display: flex; justify-content: space-between; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; }
+.link { background: none; border: 0; padding: 6px 0; color: var(--accent); font-weight: 500; font-size: 13px; text-align: left; }
+.link:hover { text-decoration: underline; }
 .car-icon, .car-pin { display: grid; place-items: center; background: var(--glow); color: #fff; }
 .car-icon { width: 42px; height: 42px; border-radius: 12px; align-self: start; }
 .car-icon svg, .car-pin svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -238,10 +271,17 @@ h1 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; }
 .car-where { font-weight: 700; }
 .car-meta { font-size: 12px; color: var(--muted); }
 .car-when { font-size: 13px; margin-top: 3px; }
+.car-hint { font-size: 11px; color: var(--muted); font-style: italic; margin-top: 2px; }
+.car-hit { display: grid; place-items: center; touch-action: none; }
+.car-pin { cursor: grab; transition: transform .12s; }
+.leaflet-marker-dragging .car-pin, .leaflet-drag-target .car-pin { cursor: grabbing; transform: scale(1.15); }
 .car-card.alert .car-title, .car-card.alert .car-when { color: var(--swept); }
 .car-card.alert .car-when { font-weight: 600; }
-.car-actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 8px; }
-.car-actions .btn { flex: 1; min-height: 38px; padding: 8px 12px; }
+.car-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.car-actions .btn:first-child { flex-basis: 100%; } /* primary action gets its own row */
+.car-actions .btn { white-space: nowrap; }
+.car-actions .btn { flex: 1; min-height: 40px; padding: 8px 10px; font-size: 13px; gap: 6px; }
+.car-actions .btn svg { width: 16px; height: 16px; }
 .car-pin {
   width: 34px; height: 34px; border-radius: 50%;
   border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .45);
@@ -293,7 +333,7 @@ h1 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; }
     -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   }
   .brand::after, .brand .sub { display: none; }
-  .logo { width: 64px; flex: none; }
+  .logo { width: 72px; height: 20px; flex: none; }
   .brand-text { flex: 1; min-width: 0; }
   h1 { font-size: 15px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .theme-toggle { position: static; width: 36px; height: 36px; }

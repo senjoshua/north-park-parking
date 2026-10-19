@@ -4,7 +4,8 @@
 
 A static map of the street-sweeping schedule for each side of the blocks around
 32nd St in North Park, San Diego. Pick a day to see which sides get swept. Tap a side to
-see its sign and upcoming dates, and save where you parked (stored only in your browser).
+see its sign and upcoming dates, and save where you parked (stored only in your browser). "Use my location" finds your
+block, then you confirm which side you're on, since GPS isn't precise enough to tell the two sides apart.
 
 ## Run locally
 
