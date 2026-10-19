@@ -1,8 +1,10 @@
 # North Park Street Sweeping
 
+**Live site: https://senjoshua.github.io/north-park-parking/**
+
 A static map of the street-sweeping schedule for each side of the blocks around
 32nd St in North Park, San Diego. Pick a day to see which sides get swept. Tap a side to
-see its sign and upcoming dates.
+see its sign and upcoming dates, and save where you parked (stored only in your browser).
 
 ## Run locally
 

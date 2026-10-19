@@ -19,6 +19,10 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
   <link rel="stylesheet" href="styles.css">
+  <script>
+    // apply a saved light/dark choice before first paint so the page doesn't flash
+    try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
 </head>
 <body>
   <noscript><p class="noscript">This map needs JavaScript to show the sweeping schedule.</p></noscript>
@@ -43,6 +47,10 @@
         <h1>North Park Street Sweeping</h1>
         <p class="sub">Block-by-block schedule for both sides of the street</p>
       </div>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to dark mode">
+        <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.1A8.5 8.5 0 1 1 9.9 3.5a6.6 6.6 0 0 0 10.6 10.6z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+      </button>
     </header>
 
     <main class="map-wrap">
@@ -54,15 +62,20 @@
     </main>
 
     <aside class="panel" id="panel">
-      <section class="days" aria-label="Pick a day">
-        <div class="days-head">
-          <h2 id="day-title">Today</h2>
-          <span class="muted" id="day-summary" aria-live="polite"></span>
+      <section class="days sheet-top" aria-label="Pick a day">
+        <!-- on phones this is the drag handle for the bottom sheet -->
+        <div class="sheet-grab" id="sheet-grab">
+          <span class="grip" aria-hidden="true"></span>
+          <div class="days-head">
+            <h2 id="day-title">Today</h2>
+            <span class="muted" id="day-summary" aria-live="polite"></span>
+          </div>
         </div>
         <div class="day-strip" id="day-strip" role="listbox"></div>
       </section>
 
       <div id="list-view">
+        <div id="my-car" hidden></div>
         <section>
           <h3 class="section-label">Streets</h3>
           <div id="street-list"></div>
@@ -80,7 +93,8 @@
         <h3 class="section-label">Upcoming</h3>
         <ol class="upcoming" id="d-upcoming"></ol>
         <div class="actions">
-          <button class="btn" id="d-other" type="button"></button>
+          <button class="btn" id="d-park" type="button"></button>
+          <button class="btn ghost" id="d-other" type="button"></button>
         </div>
         <p class="fine" id="d-raw"></p>
       </div>
